@@ -2,18 +2,22 @@ import cv2
 import mediapipe as mp
 import joblib
 import numpy as np
-import time
 import pandas as pd
+import time
 
-# Load trained model
+# ==========================
+# Load Model
+# ==========================
 model = joblib.load("models/knn_model.pkl")
 
-# Get feature names from the training dataset
-feature_names = pd.read_csv("dataset/dataset.csv").drop("label", axis=1).columns
+# Feature names
+feature_names = pd.read_csv(
+    "dataset/dataset.csv"
+).drop("label", axis=1).columns
 
-prev_time = time.time()
-fps = 0
-
+# ==========================
+# Mudra Information
+# ==========================
 mudra_info = {
     "Pataka": {
         "meaning": "Flag",
@@ -22,11 +26,26 @@ mudra_info = {
     "Mushti": {
         "meaning": "Fist",
         "uses": "Strength, Anger"
+    },
+    "Tripataka": {
+        "meaning": "Three Parts of a Flag",
+        "uses": "Crown, Tree, Arrow"
+    },
+    "Ardhachandra": {
+        "meaning": "Half Moon",
+        "uses": "Moon, Blessing, Plate"
+    },
+    "Hamsasya": {
+        "meaning": "Swan Beak",
+        "uses": "Pearl, Delicate Objects"
     }
 }
 
-# MediaPipe setup
+# ==========================
+# MediaPipe Setup
+# ==========================
 mp_hands = mp.solutions.hands
+
 hands = mp_hands.Hands(
     static_image_mode=False,
     max_num_hands=1,
@@ -36,9 +55,25 @@ hands = mp_hands.Hands(
 
 mp_draw = mp.solutions.drawing_utils
 
+# ==========================
+# Webcam
+# ==========================
 cap = cv2.VideoCapture(0)
 
+
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+
+prev_time = time.time()
+fps = 0
+
+last_console_prediction = ""
+
+# ==========================
+# Main Loop
+# ==========================
 while True:
+
     success, frame = cap.read()
 
     if not success:
@@ -65,24 +100,39 @@ while True:
 
         landmarks = []
 
-        # Wrist landmark
         for lm in hand.landmark:
             landmarks.extend([
-        lm.x,
-        lm.y,
-        lm.z
-         ])
+                lm.x,
+                lm.y,
+                lm.z
+            ])
 
-        input_data = pd.DataFrame([landmarks], columns=feature_names)
+        input_data = pd.DataFrame(
+            [landmarks],
+            columns=feature_names
+        )
 
         prediction = model.predict(input_data)[0]
 
-        confidence = np.max(model.predict_proba(input_data)) * 100
+        confidence = np.max(
+            model.predict_proba(input_data)
+        ) * 100
 
-        print(f"{prediction} ({confidence:.1f}%)")
+        # Confidence Threshold
+        if confidence < 70:
+            prediction = "Unknown Mudra"
 
-    # Background panel
-    cv2.rectangle(frame, (10, 10), (470, 180), (40, 40, 40), -1)
+        # Print only when prediction changes
+        if prediction != last_console_prediction:
+            if prediction != last_prediction:
+                print(f"{prediction} ({confidence:.1f}%)")
+                last_prediction = prediction
+                last_console_prediction = prediction
+
+    # ==========================
+    # UI Panel
+    # ==========================
+    cv2.rectangle(frame, (10,10), (500,210), (45,45,45), -1)
 
     cv2.putText(
         frame,
@@ -114,11 +164,50 @@ while True:
         2
     )
 
+    # ==========================
+    # Confidence Bar
+    # ==========================
+    bar_x = 20
+    bar_y = 120
+    bar_width = 250
+    bar_height = 20
+
+    cv2.rectangle(
+        frame,
+        (bar_x, bar_y),
+        (bar_x + bar_width, bar_y + bar_height),
+        (255, 255, 255),
+        2
+    )
+
+    filled_width = int((confidence / 100) * bar_width)
+
+    if confidence >= 90:
+        bar_color = (0, 255, 0)
+
+    elif confidence >= 70:
+        bar_color = (0, 255, 255)
+
+    else:
+        bar_color = (0, 0, 255)
+
+    cv2.rectangle(
+        frame,
+        (bar_x, bar_y),
+        (bar_x + filled_width, bar_y + bar_height),
+        bar_color,
+        -1
+    )
+
+    # ==========================
+    # Mudra Meaning
+    # ==========================
     if prediction in mudra_info:
+
         cv2.putText(
             frame,
             f"Meaning: {mudra_info[prediction]['meaning']}",
-            (20, 140),
+            (20, 170),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.6,
             (255, 255, 255),
@@ -128,15 +217,20 @@ while True:
         cv2.putText(
             frame,
             f"Uses: {mudra_info[prediction]['uses']}",
-            (20, 170),
+            (20, 200),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.55,
             (255, 255, 255),
             2
         )
 
+    # ==========================
+    # FPS
+    # ==========================
     current_time = time.time()
+
     fps = 1 / (current_time - prev_time)
+
     prev_time = current_time
 
     cv2.putText(
@@ -148,10 +242,25 @@ while True:
         (255, 255, 0),
         2
     )
-    cv2.imshow("AI Mudra Recognition System", frame)
+    cv2.putText(
+    frame,
+    "Press Q to Exit",
+    (950,700),
+    cv2.FONT_HERSHEY_SIMPLEX,
+    0.7,
+    (255,255,255),
+    2
+)
+    cv2.imshow(
+        "AI Mudra Recognition System",
+        frame
+    )
 
     if cv2.waitKey(1) & 0xFF == ord("q"):
         break
 
+# ==========================
+# Cleanup
+# ==========================
 cap.release()
 cv2.destroyAllWindows()

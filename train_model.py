@@ -44,7 +44,7 @@ print(f"Testing Samples  : {len(X_test)}")
 # Train KNN
 # --------------------------
 
-knn = KNeighborsClassifier(n_neighbors=3)
+knn = KNeighborsClassifier(n_neighbors=5)
 
 knn.fit(X_train, y_train)
 
